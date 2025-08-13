@@ -1,6 +1,6 @@
 {
   "name": "video-buffer-tracker",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "description": "A comprehensive video buffering tracking utility for monitoring video buffering progress and analytics",
   "main": "dist/index.js",
