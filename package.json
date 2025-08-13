@@ -1,8 +1,8 @@
 {
-  "name": "video-download-tracker",
+  "name": "video-buffer-tracker",
   "version": "1.0.0",
   "type": "module",
-  "description": "A comprehensive video download tracking utility for monitoring video buffering progress and analytics",
+  "description": "A comprehensive video buffering tracking utility for monitoring video buffering progress and analytics",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "module": "dist/index.esm.js",
@@ -28,22 +28,23 @@
     "video",
     "tracking",
     "analytics",
-    "download",
     "buffering",
     "progress",
     "typescript",
-    "browser"
+    "browser",
+    "media",
+    "streaming"
   ],
   "author": "Sadeq Rafiei sadeghrafiei80@gmail.com",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sadeghrafiei/video-download-tracker.git"
+    "url": "git+https://github.com/sadeghrafiei/video-buffer-tracker.git"
   },
   "bugs": {
-    "url": "https://github.com/sadeghrafiei/video-download-tracker/issues"
+    "url": "https://github.com/sadeghrafiei/video-buffer-tracker/issues"
   },
-  "homepage": "https://github.com/sadeghrafiei/video-download-tracker#readme",
+  "homepage": "https://github.com/sadeghrafiei/video-buffer-tracker#readme",
   "devDependencies": {
     "@rollup/plugin-commonjs": "^25.0.0",
     "@rollup/plugin-node-resolve": "^15.0.0",

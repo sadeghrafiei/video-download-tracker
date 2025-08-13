@@ -1,6 +1,6 @@
-export { VideoDownloadTracker } from './VideoDownloadTracker';
+export { VideoBufferTracker } from "./VideoBufferTracker";
 export type {
-    VideoDownloadTrackerConfig,
-    BufferedRange,
-    DownloadData,
-} from './VideoDownloadTracker';
+  VideoBufferTrackerConfig,
+  BufferedRange,
+  BufferData,
+} from "./VideoBufferTracker";

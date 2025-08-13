@@ -1,45 +1,45 @@
 <!DOCTYPE html>
 <html lang="en">
-    <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Video Download Tracker Test</title>
-    </head>
-    <body>
-        <h1>Video Download Tracker Test</h1>
-        <video id="testVideo" controls width="400" height="300">
-            <source
-                src="https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4"
-                type="video/mp4"
-            />
-            Your browser does not support the video tag.
-        </video>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Video Download Tracker Test</title>
+  </head>
+  <body>
+    <h1>Video Download Tracker Test</h1>
+    <video id="testVideo" controls width="400" height="300">
+      <source
+        src="https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4"
+        type="video/mp4"
+      />
+      Your browser does not support the video tag.
+    </video>
 
-        <div id="stats"></div>
+    <div id="stats"></div>
 
-        <script type="module">
-            import { VideoDownloadTracker } from './dist/index.esm.js';
+    <script type="module">
+      import { VideoBufferTracker } from "./dist/index.esm.js";
 
-            const tracker = new VideoDownloadTracker({
-                trafficEventUrl: 'https://httpbin.org/post', // Test endpoint
-                publisher: 'test.com',
-            });
+      const tracker = new VideoBufferTracker({
+        trafficEventUrl: "https://httpbin.org/post", // Test endpoint
+        publisher: "test.com",
+      });
 
-            const video = document.getElementById('testVideo');
-            const statsDiv = document.getElementById('stats');
+      const video = document.getElementById("testVideo");
+      const statsDiv = document.getElementById("stats");
 
-            tracker.setupVideoTracking(video, video.src);
+      tracker.setupVideoTracking(video, video.src);
 
-            // Update stats every second
-            setInterval(() => {
-                const stats = tracker.getTrackingStats();
-                statsDiv.innerHTML = `
+      // Update stats every second
+      setInterval(() => {
+        const stats = tracker.getTrackingStats();
+        statsDiv.innerHTML = `
                 <h3>Tracking Stats:</h3>
                 <p>Total Size: ${stats.totalSize} bytes</p>
                 <p>Downloaded: ${stats.estimatedDownloadedBytes} bytes</p>
                 <p>Full Download Submitted: ${stats.hasSubmittedFullDownload}</p>
             `;
-            }, 1000);
-        </script>
-    </body>
+      }, 1000);
+    </script>
+  </body>
 </html>
