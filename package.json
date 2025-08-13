@@ -1,0 +1,63 @@
+{
+  "name": "video-download-tracker",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "A comprehensive video download tracking utility for monitoring video buffering progress and analytics",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "module": "dist/index.esm.js",
+  "exports": {
+    ".": {
+      "import": "./dist/index.esm.js",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "rollup -c",
+    "dev": "rollup -c -w",
+    "clean": "rimraf dist",
+    "prepublishOnly": "npm run clean && npm run build",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "video",
+    "tracking",
+    "analytics",
+    "download",
+    "buffering",
+    "progress",
+    "typescript",
+    "browser"
+  ],
+  "author": "Sadeq Rafiei sadeghrafiei80@gmail.com",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourusername/video-download-tracker.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/video-download-tracker/issues"
+  },
+  "homepage": "https://github.com/yourusername/video-download-tracker#readme",
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^25.0.0",
+    "@rollup/plugin-node-resolve": "^15.0.0",
+    "@rollup/plugin-typescript": "^11.0.0",
+    "@types/node": "^20.0.0",
+    "rimraf": "^5.0.0",
+    "rollup": "^3.0.0",
+    "rollup-plugin-dts": "^5.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "dependencies": {
+    "tslib": "^2.8.1"
+  }
+}

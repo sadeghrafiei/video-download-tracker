@@ -1,0 +1,8 @@
+src/
+rollup.config.js
+tsconfig.json
+.gitignore
+.github/
+.vscode/
+*.log
+.DS_Store 
