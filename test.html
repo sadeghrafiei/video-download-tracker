@@ -3,42 +3,287 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Video Download Tracker Test</title>
+    <title>Video Buffer Tracker Test</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #f5f5f5;
+      }
+      .container {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      }
+      video {
+        width: 100%;
+        max-width: 600px;
+        height: auto;
+        border-radius: 8px;
+        margin: 20px 0;
+      }
+      .controls {
+        margin: 20px 0;
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 5px;
+      }
+      button {
+        background: #007bff;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 5px;
+        cursor: pointer;
+        margin: 5px;
+      }
+      button:hover {
+        background: #0056b3;
+      }
+      .log {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 5px;
+        padding: 15px;
+        margin: 20px 0;
+        max-height: 300px;
+        overflow-y: auto;
+        font-family: monospace;
+        font-size: 12px;
+      }
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin: 20px 0;
+      }
+      .stat-card {
+        background: #e9ecef;
+        padding: 15px;
+        border-radius: 5px;
+        text-align: center;
+      }
+      .stat-value {
+        font-size: 24px;
+        font-weight: bold;
+        color: #007bff;
+      }
+      .stat-label {
+        font-size: 12px;
+        color: #6c757d;
+        margin-top: 5px;
+      }
+      .test-section {
+        margin: 30px 0;
+        padding: 20px;
+        border: 2px solid #dee2e6;
+        border-radius: 8px;
+      }
+      .test-section h3 {
+        margin-top: 0;
+        color: #495057;
+      }
+    </style>
   </head>
   <body>
-    <h1>Video Download Tracker Test</h1>
-    <video id="testVideo" controls width="400" height="300">
-      <source
-        src="https://vrec-k.yektanet.com/media/videos/alef/alef_25e5675db37569ce2b855d879d7cd9b2b1b6b5d524596c02b19ca15795796ddc.mp4"
-        type="video/mp4"
-      />
-      Your browser does not support the video tag.
-    </video>
+    <div class="container">
+      <h1>Video Buffer Tracker Test</h1>
 
-    <div id="stats"></div>
+      <div class="test-section">
+        <h3>Test Video</h3>
+        <video id="testVideo" controls>
+          <source
+            src="https://vrec-k.yektanet.com/media/videos/alef/alef_25e5675db37569ce2b855d879d7cd9b2b1b6b5d524596c02b19ca15795796ddc.mp4"
+            type="video/mp4"
+          />
+          Your browser does not support the video tag.
+        </video>
+
+        <div class="controls">
+          <button onclick="startTracking()">Start Tracking</button>
+          <button onclick="stopTracking()">Stop Tracking</button>
+          <button onclick="getCurrentData()">Get Current Data</button>
+          <button onclick="clearLog()">Clear Log</button>
+        </div>
+      </div>
+
+      <div class="test-section">
+        <h3>Live Statistics</h3>
+        <div class="stats">
+          <div class="stat-card">
+            <div class="stat-value" id="totalSize">0</div>
+            <div class="stat-label">Total Size (bytes)</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="bufferedBytes">0</div>
+            <div class="stat-label">Buffered Bytes</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="bufferedPercent">0%</div>
+            <div class="stat-label">Buffered %</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="isComplete">No</div>
+            <div class="stat-label">Fully Buffered</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="test-section">
+        <h3>Test Results Log</h3>
+        <div class="log" id="log"></div>
+      </div>
+    </div>
 
     <script type="module">
+      // Import the VideoBufferTracker from the built package
       import { VideoBufferTracker } from "./dist/index.esm.js";
 
-      const tracker = new VideoBufferTracker({
-        trafficEventUrl: "https://httpbin.org/post", // Test endpoint
+      let tracker = null;
+      let updateInterval = null;
+
+      // Log function
+      function log(message) {
+        const logElement = document.getElementById("log");
+        const timestamp = new Date().toLocaleTimeString();
+        logElement.innerHTML += `[${timestamp}] ${message}\n`;
+        logElement.scrollTop = logElement.scrollHeight;
+      }
+
+      // Clear log function
+      window.clearLog = function () {
+        document.getElementById("log").innerHTML = "";
+      };
+
+      // Start tracking
+      window.startTracking = async function () {
+        const video = document.getElementById("testVideo");
+
+        // Get video source from source element or src attribute
+        const videoSrc = video.src || video.querySelector("source")?.src;
+
+        if (!videoSrc) {
+          log("❌ No video source found");
+          log(`🔍 Video src: "${video.src}"`);
+          log(`🔍 Source element src: "${video.querySelector("source")?.src}"`);
+          return;
+        }
+
+        try {
+          // Create tracker with callback
+          tracker = new VideoBufferTracker({
+            onBufferData: (data) => {
+              log(`📊 Buffer data received: ${JSON.stringify(data)}`);
+
+              // Simulate sending to analytics
+              log(`📤 Would send to analytics: ${data.file_size} bytes`);
+            },
+          });
+
+          // Setup tracking
+          await tracker.setupVideoTracking(video, videoSrc);
+          log("✅ Tracking started successfully");
+
+          // Start live stats updates
+          startLiveStats();
+        } catch (error) {
+          log(`❌ Error starting tracking: ${error.message}`);
+        }
+      };
+
+      // Stop tracking
+      window.stopTracking = function () {
+        if (updateInterval) {
+          clearInterval(updateInterval);
+          updateInterval = null;
+        }
+        tracker = null;
+        log("🛑 Tracking stopped");
+      };
+
+      // Get current data
+      window.getCurrentData = function () {
+        if (!tracker) {
+          log("❌ No tracker active");
+          return;
+        }
+
+        try {
+          const bufferData = tracker.getBufferData();
+          const stats = tracker.getTrackingStats();
+
+          log(`📈 Current buffer data: ${JSON.stringify(bufferData)}`);
+          log(`📊 Tracking stats: ${JSON.stringify(stats)}`);
+        } catch (error) {
+          log(`❌ Error getting data: ${error.message}`);
+        }
+      };
+
+      // Start live stats updates
+      function startLiveStats() {
+        updateInterval = setInterval(() => {
+          if (!tracker) return;
+
+          try {
+            const stats = tracker.getTrackingStats();
+            const bufferData = tracker.getBufferData();
+
+            // Update UI
+            document.getElementById("totalSize").textContent =
+              stats.totalSize.toLocaleString();
+            document.getElementById("bufferedBytes").textContent =
+              bufferData.file_size.toLocaleString();
+
+            const percent =
+              stats.totalSize > 0
+                ? Math.round((bufferData.file_size / stats.totalSize) * 100)
+                : 0;
+            document.getElementById(
+              "bufferedPercent"
+            ).textContent = `${percent}%`;
+
+            document.getElementById("isComplete").textContent =
+              stats.hasSubmittedFullDownload ? "Yes" : "No";
+            document.getElementById("isComplete").style.color =
+              stats.hasSubmittedFullDownload ? "#28a745" : "#dc3545";
+          } catch (error) {
+            log(`❌ Error updating stats: ${error.message}`);
+          }
+        }, 1000);
+      }
+
+      // Test different scenarios
+      log("🚀 Video Buffer Tracker Test Page Loaded");
+      log("📹 Using sample video: Big Buck Bunny");
+      log('💡 Click "Start Tracking" to begin testing');
+
+      // Auto-start tracking when video loads
+      document
+        .getElementById("testVideo")
+        .addEventListener("loadedmetadata", () => {
+          log("🎬 Video metadata loaded");
+        });
+
+      document.getElementById("testVideo").addEventListener("progress", () => {
+        if (tracker) {
+          log("⏳ Video progress event detected");
+        }
       });
 
-      const video = document.getElementById("testVideo");
-      const statsDiv = document.getElementById("stats");
-
-      tracker.setupVideoTracking(video, video.src);
-
-      // Update stats every second
-      setInterval(() => {
-        const stats = tracker.getTrackingStats();
-        statsDiv.innerHTML = `
-                <h3>Tracking Stats:</h3>
-                <p>Total Size: ${stats.totalSize} bytes</p>
-                <p>Downloaded: ${stats.estimatedDownloadedBytes} bytes</p>
-                <p>Full Download Submitted: ${stats.hasSubmittedFullDownload}</p>
-            `;
-      }, 1000);
+      document
+        .getElementById("testVideo")
+        .addEventListener("timeupdate", () => {
+          if (tracker) {
+            const video = document.getElementById("testVideo");
+            const remaining = video.duration - video.currentTime;
+            if (remaining <= 0.2) {
+              log("🎯 Video near end - final probe triggered");
+            }
+          }
+        });
     </script>
   </body>
 </html>
