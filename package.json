@@ -39,12 +39,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sadeghrafiei/video-buffer-tracker.git"
+    "url": "git+https://github.com/sadeghrafiei/video-download-tracker.git"
   },
   "bugs": {
-    "url": "https://github.com/sadeghrafiei/video-buffer-tracker/issues"
+    "url": "https://github.com/sadeghrafiei/video-download-tracker/issues"
   },
-  "homepage": "https://github.com/sadeghrafiei/video-buffer-tracker#readme",
+  "homepage": "https://github.com/sadeghrafiei/video-download-tracker#readme",
   "devDependencies": {
     "@rollup/plugin-commonjs": "^25.0.0",
     "@rollup/plugin-node-resolve": "^15.0.0",
