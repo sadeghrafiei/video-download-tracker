@@ -31,7 +31,6 @@
  *
  * 4. ANALYTICS INTEGRATION:
  *    - Sends download size data to configurable analytics endpoints
- *    - Tracks publisher domain and video URL
  *    - Prevents duplicate analytics submissions
  *
  * 5. EVENT HANDLING:
@@ -69,7 +68,6 @@
  * ```
  * const tracker = new VideoBufferTracker({
  *     trafficEventUrl: 'https://analytics.example.com/events',
- *     publisher: 'example.com'
  * });
  *
  * await tracker.setupVideoTracking(videoElement, videoUrl);
@@ -79,7 +77,6 @@
 
 export interface VideoBufferTrackerConfig {
   trafficEventUrl?: string;
-  publisher?: string;
   onBufferData?: (data: BufferData) => void | Promise<void>;
 }
 
@@ -90,8 +87,6 @@ export interface BufferedRange {
 
 export interface BufferData {
   file_size: number;
-  publisher: string;
-  video_serve_url: string;
 }
 
 export class VideoBufferTracker {
@@ -106,7 +101,6 @@ export class VideoBufferTracker {
 
   constructor(config: VideoBufferTrackerConfig = {}) {
     this.config = {
-      publisher: window.location.hostname,
       ...config,
     };
   }
@@ -462,9 +456,6 @@ export class VideoBufferTracker {
   getBufferData(): BufferData {
     return {
       file_size: parseInt(this.estimatedDownloadedBytes.toFixed(0)),
-      publisher: this.config.publisher || window.location.hostname,
-      video_serve_url:
-        this.currentVideoElement?.src || this.currentVideoUrl || "",
     };
   }
 

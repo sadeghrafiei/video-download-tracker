@@ -24,7 +24,6 @@ npm install video-buffer-tracker
 import { VideoBufferTracker } from "video-buffer-tracker";
 
 const tracker = new VideoBufferTracker({
-  publisher: "example.com",
   onBufferData: (data) => {
     // Handle the buffer data yourself
     console.log("Buffer data:", data);
@@ -49,7 +48,6 @@ import { VideoBufferTracker } from "video-buffer-tracker";
 
 const tracker = new VideoBufferTracker({
   trafficEventUrl: "https://analytics.example.com/events",
-  publisher: "example.com",
 });
 
 await tracker.setupVideoTracking(videoElement, videoUrl);
@@ -60,9 +58,7 @@ await tracker.setupVideoTracking(videoElement, videoUrl);
 ```javascript
 import { VideoBufferTracker } from "video-buffer-tracker";
 
-const tracker = new VideoBufferTracker({
-  publisher: "example.com",
-});
+const tracker = new VideoBufferTracker({});
 
 await tracker.setupVideoTracking(videoElement, videoUrl);
 
@@ -82,8 +78,6 @@ console.log("Tracking stats:", stats);
 ```typescript
 interface VideoBufferTrackerConfig {
   trafficEventUrl?: string; // Legacy: URL to send analytics data
-  publisher?: string; // Publisher domain (defaults to window.location.hostname)
-  onBufferData?: (data: BufferData) => void | Promise<void>; // Callback for buffer data
 }
 ```
 
@@ -92,8 +86,6 @@ interface VideoBufferTrackerConfig {
 ```typescript
 interface BufferData {
   file_size: number; // Estimated bytes buffered
-  publisher: string; // Publisher domain
-  video_serve_url: string; // Video URL
 }
 ```
 
