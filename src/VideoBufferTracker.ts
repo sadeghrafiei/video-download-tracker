@@ -80,6 +80,7 @@
 export interface VideoBufferTrackerConfig {
   trafficEventUrl?: string;
   publisher?: string;
+  onBufferData?: (data: BufferData) => void | Promise<void>;
 }
 
 export interface BufferedRange {
@@ -422,29 +423,59 @@ export class VideoBufferTracker {
   }
 
   /**
-   * Log final download size and send to analytics
+   * Log final download size and handle analytics
    */
   private logFinalDownloadSize(): void {
     if (this.estimatedDownloadedBytes > 0) {
-      this.sendDownloadSizeToAnalytics();
+      this.handleBufferData();
     }
   }
 
   /**
-   * Send download size data to analytics
+   * Handle buffer data - either call callback or send to analytics URL
    */
-  private async sendDownloadSizeToAnalytics(): Promise<void> {
-    if (!this.config.trafficEventUrl) return;
+  private async handleBufferData(): Promise<void> {
+    const bufferData = this.getBufferData();
 
-    const bufferData: BufferData = {
+    // Call the callback if provided
+    if (this.config.onBufferData) {
+      try {
+        await this.config.onBufferData(bufferData);
+      } catch (error) {
+        console.error("Error in onBufferData callback:", error);
+      }
+    }
+
+    // Send to analytics URL if provided (legacy support)
+    if (this.config.trafficEventUrl) {
+      await this.sendBufferDataToAnalytics(bufferData);
+    }
+
+    // Reset tracking state after successful handling
+    this.estimatedDownloadedBytes = 0;
+    this.lastProbedEnd = -1;
+  }
+
+  /**
+   * Get current buffer data
+   */
+  getBufferData(): BufferData {
+    return {
       file_size: parseInt(this.estimatedDownloadedBytes.toFixed(0)),
       publisher: this.config.publisher || window.location.hostname,
       video_serve_url:
         this.currentVideoElement?.src || this.currentVideoUrl || "",
     };
+  }
 
+  /**
+   * Send buffer data to analytics URL (legacy method)
+   */
+  private async sendBufferDataToAnalytics(
+    bufferData: BufferData
+  ): Promise<void> {
     try {
-      const response = await fetch(this.config.trafficEventUrl, {
+      const response = await fetch(this.config.trafficEventUrl!, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -452,10 +483,7 @@ export class VideoBufferTracker {
         body: JSON.stringify(bufferData),
       });
 
-      if (response.ok) {
-        this.estimatedDownloadedBytes = 0;
-        this.lastProbedEnd = -1;
-      } else {
+      if (!response.ok) {
         console.error(
           "Failed to send traffic data:",
           response.status,
