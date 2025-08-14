@@ -1,6 +1,6 @@
 {
   "name": "video-buffer-tracker",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "type": "module",
   "description": "A comprehensive video buffering tracking utility for monitoring video buffering progress and analytics",
   "main": "dist/index.js",
@@ -14,14 +14,17 @@
     }
   },
   "files": [
-    "dist",
+    "dist/index.js",
+    "dist/index.esm.js",
+    "dist/index.d.ts",
     "README.md"
   ],
   "scripts": {
     "build": "rollup -c",
+    "postbuild": "node -e \"const fs=require('fs');const path=require('path');const dist='dist';fs.readdirSync(dist).forEach(f=>{if(f!=='index.js'&&f!=='index.esm.js'&&f!=='index.d.ts'&&!f.endsWith('.map')){const p=path.join(dist,f);if(fs.statSync(p).isDirectory()){fs.rmSync(p,{recursive:true,force:true});}else{fs.unlinkSync(p);}}});\"",
     "dev": "rollup -c -w",
     "clean": "rimraf dist",
-    "prepublishOnly": "npm run clean && npm run build",
+    "prepublishOnly": "npm run clean && npm run build && npm run postbuild",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
@@ -49,6 +52,7 @@
     "@rollup/plugin-commonjs": "^25.0.0",
     "@rollup/plugin-node-resolve": "^15.0.0",
     "@rollup/plugin-typescript": "^11.0.0",
+    "@rollup/plugin-terser": "^0.4.0",
     "@types/node": "^20.0.0",
     "rimraf": "^5.0.0",
     "rollup": "^3.0.0",
