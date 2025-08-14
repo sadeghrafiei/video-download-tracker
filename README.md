@@ -1,16 +1,22 @@
-# Video Buffer Tracker
+# 🎬 Video Buffer Tracker
 
-A comprehensive, production-ready video buffering tracking utility for monitoring video buffering progress and analytics.
+[![npm version](https://badge.fury.io/js/video-buffer-tracker.svg)](https://badge.fury.io/js/video-buffer-tracker)
+[![npm downloads](https://img.shields.io/npm/dm/video-buffer-tracker.svg)](https://www.npmjs.com/package/video-buffer-tracker)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+
+> **Professional Video Buffering Analytics & Tracking Library** - Monitor video buffering progress, track streaming performance, and analyze user viewing experience in real-time.
 
 ## 🚀 Features
 
-- **Real-time Tracking**: Monitor video buffering progress in real-time
-- **Accurate Calculations**: Calculate actual bytes buffered based on buffered ranges
-- **Flexible Analytics**: Multiple ways to handle analytics data
-- **Production Ready**: Comprehensive error handling, validation, and logging
-- **Memory Safe**: Proper cleanup and event listener management
-- **TypeScript Support**: Full TypeScript support with comprehensive types
-- **Configurable**: Extensive configuration options for different use cases
+- **Real-time Video Buffering Tracking** - Monitor buffering progress as users watch videos
+- **Advanced Analytics Integration** - Send buffering data to your analytics platform
+- **Performance Monitoring** - Track video streaming performance and user experience
+- **Memory Efficient** - Optimized for production with minimal bundle size (32KB)
+- **TypeScript Support** - Full type safety and IntelliSense support
+- **Modular Architecture** - Clean, maintainable codebase with focused services
+- **Cross-browser Compatible** - Works with all modern browsers
+- **Zero Dependencies** - Lightweight with only tslib as peer dependency
 
 ## 📦 Installation
 
@@ -18,52 +24,48 @@ A comprehensive, production-ready video buffering tracking utility for monitorin
 npm install video-buffer-tracker
 ```
 
+```bash
+yarn add video-buffer-tracker
+```
+
+```bash
+pnpm add video-buffer-tracker
+```
+
 ## 🎯 Quick Start
 
-### Basic Usage
-
 ```javascript
 import { VideoBufferTracker } from "video-buffer-tracker";
 
+// Create tracker instance
 const tracker = new VideoBufferTracker({
+  debug: true,
   onBufferData: (data) => {
-    console.log("Buffer data:", data);
+    console.log("Buffering data:", data);
     // Send to your analytics service
+    analytics.track("video_buffering", data);
   },
 });
 
-await tracker.setupVideoTracking(videoElement, videoUrl);
+// Setup tracking for video element
+const video = document.querySelector("video");
+await tracker.setupVideoTracking(video, video.src);
+
+// Get current buffering data
+const bufferData = tracker.getBufferData();
+console.log("Current buffer:", bufferData);
 ```
 
-### Advanced Configuration
+## 🔧 API Reference
 
-```javascript
-import { VideoBufferTracker } from "video-buffer-tracker";
+### VideoBufferTracker
 
-const tracker = new VideoBufferTracker({
-  debug: true, // Enable debug logging
-  progressThrottleMs: 500, // Update every 500ms
-  finalProbeThreshold: 0.5, // Trigger final probe 0.5s before end
-  onBufferData: async (data) => {
-    await sendToAnalytics(data);
-  },
-});
+The main class for video buffering tracking and analytics.
 
-await tracker.setupVideoTracking(videoElement, videoUrl);
-```
-
-## 📚 API Reference
-
-### Configuration
+#### Constructor Options
 
 ```typescript
 interface VideoBufferTrackerConfig {
-  /** Legacy: URL to send analytics data */
-  trafficEventUrl?: string;
-
-  /** Callback function for buffer data */
-  onBufferData?: (data: BufferData) => void | Promise<void>;
-
   /** Enable debug logging */
   debug?: boolean;
 
@@ -75,36 +77,16 @@ interface VideoBufferTrackerConfig {
 
   /** Epsilon for range merging (seconds) */
   rangeMergeEpsilon?: number;
+
+  /** Legacy: URL to send analytics data */
+  trafficEventUrl?: string;
+
+  /** Callback function for buffer data */
+  onBufferData?: (data: BufferData) => void | Promise<void>;
 }
 ```
 
-### Data Types
-
-```typescript
-interface BufferData {
-  /** Estimated bytes buffered */
-  file_size: number;
-  /** Video URL */
-  video_url?: string;
-  /** Timestamp when data was collected */
-  timestamp?: number;
-}
-
-interface TrackingStats {
-  /** Total video file size in bytes */
-  totalSize: number;
-  /** Estimated downloaded bytes */
-  estimatedDownloadedBytes: number;
-  /** Whether full download has been submitted */
-  hasSubmittedFullDownload: boolean;
-  /** Current buffered ranges */
-  bufferedRanges: BufferedRange[];
-  /** Video duration in seconds */
-  duration: number;
-}
-```
-
-### Methods
+#### Methods
 
 | Method                                | Description                         |
 | ------------------------------------- | ----------------------------------- |
@@ -114,117 +96,218 @@ interface TrackingStats {
 | `destroy()`                           | Stop tracking and cleanup resources |
 | `isTrackingActive()`                  | Check if tracking is active         |
 
+## 📊 Data Structure
+
+### BufferData
+
+```typescript
+interface BufferData {
+  file_size: number; // Total buffered bytes
+  buffered_ranges: Array<{
+    // Buffered time ranges
+    start: number;
+    end: number;
+  }>;
+  duration: number; // Video duration in seconds
+  current_time: number; // Current playback time
+  is_complete: boolean; // Whether video is fully buffered
+}
+```
+
 ## 🔧 Usage Examples
 
-### Callback-based Analytics
+### Basic Video Tracking
+
+```javascript
+import { VideoBufferTracker } from "video-buffer-tracker";
+
+const tracker = new VideoBufferTracker();
+const video = document.querySelector("video");
+
+await tracker.setupVideoTracking(video, video.src);
+
+// Monitor buffering progress
+setInterval(() => {
+  const data = tracker.getBufferData();
+  console.log(`Buffered: ${data.file_size} bytes`);
+}, 1000);
+```
+
+### Analytics Integration
 
 ```javascript
 const tracker = new VideoBufferTracker({
   onBufferData: (data) => {
-    // Send to your analytics service
-    analytics.track("video_buffer", data);
+    // Send to Google Analytics
+    gtag("event", "video_buffering", {
+      buffered_bytes: data.file_size,
+      buffered_percent: (data.file_size / totalSize) * 100,
+      video_duration: data.duration,
+    });
+
+    // Send to custom analytics
+    fetch("/api/analytics/video", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
   },
 });
 ```
 
-### Legacy URL-based Analytics
+### Performance Monitoring
 
 ```javascript
 const tracker = new VideoBufferTracker({
-  trafficEventUrl: "https://analytics.example.com/events",
+  debug: true,
+  progressThrottleMs: 500,
+  finalProbeThreshold: 0.5,
 });
+
+// Track performance metrics
+tracker.onBufferData = (data) => {
+  const stats = tracker.getTrackingStats();
+
+  performance.mark("video-buffer-update");
+  performance.measure(
+    "buffer-calculation",
+    "video-buffer-start",
+    "video-buffer-update"
+  );
+
+  console.log("Performance:", performance.getEntriesByType("measure"));
+};
 ```
 
-### Manual Data Retrieval
-
-```javascript
-const tracker = new VideoBufferTracker();
-
-// Get data when needed
-const bufferData = tracker.getBufferData();
-const stats = tracker.getTrackingStats();
-```
-
-### Debug Mode
+### Advanced Configuration
 
 ```javascript
 const tracker = new VideoBufferTracker({
-  debug: true, // Enables detailed logging
+  debug: false,
+  progressThrottleMs: 250, // Update every 250ms
+  finalProbeThreshold: 0.2, // Final check at 0.2s remaining
+  rangeMergeEpsilon: 0.5, // Merge ranges within 0.5s
+  trafficEventUrl: "https://api.example.com/analytics",
+  onBufferData: (data) => {
+    // Custom analytics logic
+    if (data.is_complete) {
+      console.log("Video fully buffered!");
+    }
+  },
 });
 ```
 
 ## 🏗️ Architecture
 
-The package is built with a modular, service-oriented architecture:
+The library uses a modular architecture with focused services:
 
-- **VideoBufferTracker**: Main class that orchestrates all functionality
-- **VideoSizeService**: Handles video file size detection
-- **BufferCalculationService**: Manages buffer calculations and range merging
-- **AnalyticsService**: Handles analytics data submission
-- **EventManager**: Manages event listeners and cleanup
-- **ValidationUtils**: Input validation and error checking
-- **Logger**: Configurable logging system
+- **VideoSizeService** - Handles video file size detection with caching
+- **BufferCalculationService** - Manages buffer range calculations and merging
+- **AnalyticsService** - Handles analytics submission and callback execution
+- **EventManager** - Manages event listeners and cleanup
+- **ValidationUtils** - Input validation and error handling
+- **Logger** - Configurable logging system
 
-## 🔍 Error Handling
+## 🔍 Use Cases
 
-The package includes comprehensive error handling:
+### Video Streaming Platforms
 
-- **Input Validation**: All inputs are validated before processing
-- **Network Errors**: Graceful handling of network failures
-- **Video Errors**: Proper handling of video element errors
-- **Analytics Errors**: Non-blocking analytics submission
-- **Memory Leaks**: Proper cleanup of event listeners
+- Monitor buffering performance across different video qualities
+- Track user experience and identify streaming issues
+- Optimize CDN delivery based on buffering patterns
 
-## 🧪 Testing
+### E-learning Applications
 
-```javascript
-// Test the package
-const tracker = new VideoBufferTracker({
-  debug: true,
-  onBufferData: (data) => {
-    console.log("Test data:", data);
-  },
-});
+- Track video completion rates and engagement
+- Monitor student viewing behavior
+- Identify technical issues affecting learning
 
-// Setup tracking
-await tracker.setupVideoTracking(videoElement, videoUrl);
+### Media Analytics
 
-// Check if tracking is active
-console.log("Tracking active:", tracker.isTrackingActive());
+- Measure video performance metrics
+- Track user engagement patterns
+- Optimize content delivery
 
-// Get current data
-const data = tracker.getBufferData();
-const stats = tracker.getTrackingStats();
+### Performance Monitoring
 
-// Cleanup
-tracker.destroy();
+- Real-time video streaming analytics
+- User experience monitoring
+- Technical issue detection
+
+## 🚀 Performance
+
+- **Bundle Size**: 32KB (minified and optimized)
+- **Memory Usage**: Minimal with proper cleanup
+- **CPU Impact**: Low with configurable throttling
+- **Network**: Efficient with caching and timeouts
+
+## 🔧 Development
+
+### Building
+
+```bash
+npm run build
 ```
 
-## 🔄 Migration from v1.x
+### Development Mode
 
-The v2.0 release is fully backward compatible with v1.x APIs. Key improvements:
+```bash
+npm run dev
+```
 
-- **Better Error Handling**: More robust error handling and validation
-- **Improved Logging**: Configurable logging system
-- **Memory Safety**: Proper cleanup and event listener management
-- **Type Safety**: Enhanced TypeScript support
-- **Performance**: Optimized calculations and reduced memory usage
+### Testing
+
+```bash
+# Open test.html in browser
+npm run test
+```
+
+## 📈 Migration from v1.x
+
+The v2.0.0 release includes breaking changes for improved architecture:
+
+```javascript
+// v1.x
+const tracker = new VideoDownloadTracker({
+  trafficEventUrl: "https://api.example.com/analytics",
+});
+
+// v2.0.0
+const tracker = new VideoBufferTracker({
+  onBufferData: (data) => {
+    // Send to analytics
+    fetch("https://api.example.com/analytics", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+});
+```
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
 
 ## 📄 License
 
 MIT License - see [LICENSE](LICENSE) file for details.
 
-## 🤝 Contributing
+## 🔗 Related Packages
 
-Contributions are welcome! Please read our contributing guidelines before submitting pull requests.
+- [video.js](https://github.com/videojs/video.js) - HTML5 video player
+- [plyr](https://github.com/sampotts/plyr) - Simple HTML5 media player
+- [shaka-player](https://github.com/shaka-project/shaka-player) - DASH/HLS player
 
-## 📈 Changelog
+## 📞 Support
 
-### v2.0.0
+- **Issues**: [GitHub Issues](https://github.com/sadeghrafiei/video-download-tracker/issues)
+- **Documentation**: [GitHub Wiki](https://github.com/sadeghrafiei/video-download-tracker/wiki)
+- **Email**: sadeghrafiei80@gmail.com
 
-- Complete refactor with modular architecture
-- Enhanced error handling and validation
-- Configurable logging system
-- Memory leak prevention
-- Improved TypeScript support
-- Backward compatibility maintained
+---
+
+**Made with ❤️ for the video streaming community**
