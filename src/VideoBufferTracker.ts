@@ -1,362 +1,349 @@
+import type {
+  VideoBufferTrackerConfig,
+  BufferData,
+  TrackingStats,
+  BufferedRange,
+  VideoInfo,
+} from "./types";
+import { ValidationUtils } from "./utils/validation";
+import { DefaultLogger } from "./utils/logger";
+import { VideoSizeService } from "./services/VideoSizeService";
+import { BufferCalculationService } from "./services/BufferCalculationService";
+import { AnalyticsService } from "./services/AnalyticsService";
+import { EventManager } from "./core/EventManager";
+
 /**
- * VideoBufferTracker - Global Video Download Tracking Utility
+ * VideoBufferTracker - Comprehensive video buffering tracking utility
  *
- * OVERVIEW:
- * This class provides comprehensive video download tracking and analytics functionality.
- * It monitors video buffering progress, calculates downloaded bytes, and sends analytics
- * data to track user video consumption patterns.
+ * This class provides real-time video buffering progress tracking and analytics.
+ * It monitors video buffering progress, calculates downloaded bytes, and provides
+ * flexible analytics integration.
  *
- * PURPOSE:
- * - Track video download progress in real-time
- * - Calculate actual bytes downloaded based on buffered ranges
- * - Send analytics data for video consumption tracking
- * - Handle multiple video tracking scenarios
- * - Optimize network usage by using mathematical calculations instead of HEAD requests
- *
- * CORE FUNCTIONALITY:
- *
- * 1. VIDEO SIZE DETECTION:
- *    - Uses HEAD request to get total video file size
- *    - Stores size for mathematical byte calculations
- *
- * 2. BUFFERING TRACKING:
- *    - Monitors video.buffered ranges to track download progress
- *    - Merges overlapping/adjacent buffered ranges
- *    - Detects when video is fully downloaded
- *
- * 3. BYTE CALCULATION:
- *    - Converts time ranges to byte ranges mathematically
- *    - Calculates downloaded bytes without additional network requests
- *    - Prevents duplicate processing of overlapping ranges
- *
- * 4. ANALYTICS INTEGRATION:
- *    - Sends download size data to configurable analytics endpoints
- *    - Prevents duplicate analytics submissions
- *
- * 5. EVENT HANDLING:
- *    - Progress events: Track buffering progress
- *    - Time update events: Detect video end
- *    - Page events: Handle page unload/visibility changes
- *
- * LOGIC FLOW:
- *
- * 1. SETUP PHASE:
- *    setupVideoTracking() → ensureTotalSize() → setupEventListeners()
- *    - Initialize video element and URL references
- *    - Get total file size via HEAD request
- *    - Attach event listeners for tracking
- *
- * 2. PROGRESS TRACKING:
- *    progress event → createProgressHandler() → updateProgressEstimate()
- *    - Monitor buffered ranges on progress events
- *    - Calculate downloaded bytes for new ranges
- *    - Update tracking statistics
- *
- * 3. FINAL PROBE:
- *    timeupdate event → createTimeUpdateHandler() → performFinalProbe()
- *    - Trigger when video is near end (≤0.2s remaining)
- *    - Calculate total downloaded bytes across all ranges
- *    - Send final analytics data
- *
- * 4. ANALYTICS SUBMISSION:
- *    logFinalDownloadSize() → sendDownloadSizeToAnalytics()
- *    - Send download data to configured endpoint
- *    - Reset tracking state after successful submission
- *    - Handle errors gracefully
- * USAGE:
- *
- * ```
+ * @example
+ * ```typescript
  * const tracker = new VideoBufferTracker({
- *     trafficEventUrl: 'https://analytics.example.com/events',
+ *   onBufferData: (data) => {
+ *     console.log('Buffer data:', data);
+ *   }
  * });
  *
  * await tracker.setupVideoTracking(videoElement, videoUrl);
  * ```
- *
  */
-
-export interface VideoBufferTrackerConfig {
-  trafficEventUrl?: string;
-  onBufferData?: (data: BufferData) => void | Promise<void>;
-}
-
-export interface BufferedRange {
-  start: number;
-  end: number;
-}
-
-export interface BufferData {
-  file_size: number;
-}
-
 export class VideoBufferTracker {
-  private totalSize = 0;
+  private config: VideoBufferTrackerConfig & {
+    debug: boolean;
+    progressThrottleMs: number;
+    finalProbeThreshold: number;
+    rangeMergeEpsilon: number;
+  };
+  private logger: DefaultLogger;
+  private videoSizeService: VideoSizeService;
+  private bufferService: BufferCalculationService;
+  private analyticsService: AnalyticsService;
+  private eventManager?: EventManager;
+
+  // State
+  private videoInfo?: VideoInfo;
   private estimatedDownloadedBytes = 0;
   private submittedBytesBaseline = 0;
   private hasSubmittedFullDownload = false;
   private lastProbedEnd = -1;
-  private config: VideoBufferTrackerConfig;
-  private currentVideoUrl = "";
-  private currentVideoElement: HTMLVideoElement | null = null;
+  private isTracking = false;
 
   constructor(config: VideoBufferTrackerConfig = {}) {
+    // Validate configuration
+    ValidationUtils.validateConfig(config);
+
+    // Set default configuration
     this.config = {
-      ...config,
+      trafficEventUrl: config.trafficEventUrl || undefined,
+      onBufferData: config.onBufferData || undefined,
+      debug: config.debug ?? false,
+      progressThrottleMs: config.progressThrottleMs ?? 250,
+      finalProbeThreshold: config.finalProbeThreshold ?? 0.2,
+      rangeMergeEpsilon: config.rangeMergeEpsilon ?? 0.5,
     };
+
+    // Initialize services
+    this.logger = new DefaultLogger(this.config.debug);
+    this.videoSizeService = new VideoSizeService(this.logger);
+    this.bufferService = new BufferCalculationService(this.logger);
+    this.analyticsService = new AnalyticsService(
+      this.logger,
+      this.config.trafficEventUrl
+    );
+
+    this.logger.info("VideoBufferTracker initialized");
   }
 
   /**
    * Setup video tracking for a video element
+   *
    * @param video - The HTML video element to track
    * @param videoUrl - The URL of the video
+   * @throws {Error} If video element or URL is invalid
    */
   async setupVideoTracking(
     video: HTMLVideoElement,
     videoUrl: string
   ): Promise<void> {
-    if (!video || !videoUrl) return;
-
-    this.currentVideoUrl = videoUrl;
-    this.currentVideoElement = video;
-
-    // Initialize total size
-    await this.ensureTotalSize(videoUrl);
-
-    // Setup event listeners
-    this.setupEventListeners(video, videoUrl);
-  }
-
-  /**
-   * Get the total size of the video file
-   */
-  private async ensureTotalSize(videoUrl: string): Promise<void> {
-    if (this.totalSize > 0) return;
-
     try {
-      const headResp = await fetch(videoUrl, { method: "HEAD" });
-      const len = headResp.headers.get("Content-Length");
-      if (len) this.totalSize = parseInt(len);
+      // Validate inputs
+      ValidationUtils.validateVideoElement(video);
+      ValidationUtils.validateVideoUrl(videoUrl);
+
+      this.logger.info("Setting up video tracking", { videoUrl });
+
+      // Get video size
+      const totalSize = await this.videoSizeService.getVideoSize(videoUrl);
+
+      // Store video info
+      this.videoInfo = {
+        url: videoUrl,
+        duration: video.duration || 0,
+        totalSize,
+        element: video,
+      };
+
+      // Setup event handlers
+      this.setupEventHandlers();
+
+      this.isTracking = true;
+      this.logger.info("Video tracking setup complete");
     } catch (error) {
-      console.error("Failed to get video total size:", error);
+      this.logger.error("Failed to setup video tracking:", error);
+      throw error;
     }
   }
 
   /**
-   * Setup all event listeners for video tracking
+   * Get current buffer data
    */
-  private setupEventListeners(video: HTMLVideoElement, videoUrl: string): void {
-    // Setup progress tracking
-    const onProgress = this.createProgressHandler();
-
-    // Setup final probe handler
-    const finalizeProbe = this.createFinalizeProbeHandler(videoUrl);
-
-    // Setup time update handler
-    const onTimeUpdateNearEnd = this.createTimeUpdateHandler(finalizeProbe);
-
-    // Attach all listeners
-    this.attachEventListeners(
-      video,
-      onProgress,
-      finalizeProbe,
-      onTimeUpdateNearEnd
-    );
+  getBufferData(): BufferData {
+    return {
+      file_size: Math.round(this.estimatedDownloadedBytes),
+      video_url: this.videoInfo?.url,
+      timestamp: Date.now(),
+    };
   }
 
   /**
-   * Create progress handler for tracking video buffering
+   * Get current tracking statistics
+   */
+  getTrackingStats(): TrackingStats {
+    return {
+      totalSize: this.videoInfo?.totalSize ?? 0,
+      estimatedDownloadedBytes: this.estimatedDownloadedBytes,
+      hasSubmittedFullDownload: this.hasSubmittedFullDownload,
+      bufferedRanges: this.videoInfo
+        ? this.bufferService.getBufferedRanges(this.videoInfo.element)
+        : [],
+      duration: this.videoInfo?.duration ?? 0,
+    };
+  }
+
+  /**
+   * Stop tracking and cleanup resources
+   */
+  destroy(): void {
+    try {
+      this.logger.info("Destroying VideoBufferTracker");
+
+      // Detach event listeners
+      if (this.eventManager) {
+        this.eventManager.detach();
+      }
+
+      // Clear state
+      this.isTracking = false;
+      this.videoInfo = undefined;
+      this.estimatedDownloadedBytes = 0;
+      this.submittedBytesBaseline = 0;
+      this.hasSubmittedFullDownload = false;
+      this.lastProbedEnd = -1;
+
+      this.logger.info("VideoBufferTracker destroyed");
+    } catch (error) {
+      this.logger.error("Error destroying VideoBufferTracker:", error);
+    }
+  }
+
+  /**
+   * Check if tracking is active
+   */
+  isTrackingActive(): boolean {
+    return this.isTracking;
+  }
+
+  /**
+   * Setup event handlers and attach listeners
+   */
+  private setupEventHandlers(): void {
+    if (!this.videoInfo) {
+      throw new Error("Video info not available");
+    }
+
+    const handlers = {
+      onProgress: this.createProgressHandler(),
+      onTimeUpdate: this.createTimeUpdateHandler(),
+      onFinalize: this.createFinalizeHandler(),
+    };
+
+    this.eventManager = new EventManager(
+      this.logger,
+      this.videoInfo.element,
+      handlers
+    );
+    this.eventManager.attach();
+  }
+
+  /**
+   * Create progress event handler
    */
   private createProgressHandler() {
     return async (): Promise<void> => {
-      if (!this.currentVideoElement) return;
-
       if (
-        !this.currentVideoElement.duration ||
-        !this.totalSize ||
+        !this.videoInfo ||
+        !this.isTracking ||
         this.hasSubmittedFullDownload
-      )
+      ) {
         return;
+      }
 
-      const ranges = this.getBufferedRanges();
-      if (ranges.length === 0) return;
+      const { element, duration, totalSize } = this.videoInfo;
 
-      if (this.isFullyDownloaded(ranges)) {
+      if (!duration || !totalSize) {
+        return;
+      }
+
+      const ranges = this.bufferService.getBufferedRanges(element);
+      if (ranges.length === 0) {
+        return;
+      }
+
+      // Check if fully downloaded
+      if (
+        this.bufferService.isFullyDownloaded(
+          ranges,
+          duration,
+          this.config.rangeMergeEpsilon
+        )
+      ) {
         this.handleFullDownload();
         return;
       }
 
+      // Update progress estimate
       await this.updateProgressEstimate(ranges);
     };
   }
 
   /**
-   * Get buffered ranges from video element
+   * Create time update event handler
    */
-  private getBufferedRanges(): BufferedRange[] {
-    if (!this.currentVideoElement) return [];
+  private createTimeUpdateHandler() {
+    return async (): Promise<void> => {
+      if (
+        !this.videoInfo ||
+        !this.isTracking ||
+        this.hasSubmittedFullDownload
+      ) {
+        return;
+      }
 
-    const out: BufferedRange[] = [];
-    const ranges = this.currentVideoElement.buffered;
-    if (!ranges) return out;
+      const { element, duration } = this.videoInfo;
+      if (!duration || isNaN(duration)) {
+        return;
+      }
 
-    for (let i = 0; i < ranges.length; i++) {
+      const remaining = duration - element.currentTime;
+      if (remaining <= this.config.finalProbeThreshold) {
+        this.logger.debug("Video near end, triggering final probe");
+        await this.performFinalProbe();
+      }
+    };
+  }
+
+  /**
+   * Create finalize event handler
+   */
+  private createFinalizeHandler() {
+    return async (): Promise<void> => {
+      if (!this.isTracking || this.hasSubmittedFullDownload) {
+        return;
+      }
+
       try {
-        out.push({ start: ranges.start(i), end: ranges.end(i) });
-      } catch {}
-    }
-    return out;
-  }
-
-  /**
-   * Check if video is fully downloaded
-   */
-  private isFullyDownloaded(ranges: BufferedRange[]): boolean {
-    if (!this.currentVideoElement) return false;
-
-    const epsilon = Math.max(0.5, this.currentVideoElement.duration * 0.01);
-    const merged = this.mergeRanges(ranges, epsilon);
-
-    let covered = 0;
-    for (const r of merged) {
-      covered += Math.max(0, r.end - r.start);
-    }
-
-    return covered >= this.currentVideoElement.duration - epsilon;
-  }
-
-  /**
-   * Merge overlapping or adjacent ranges
-   */
-  private mergeRanges(
-    ranges: BufferedRange[],
-    epsilon: number
-  ): BufferedRange[] {
-    const normalized = [...ranges].sort((a, b) => a.start - b.start);
-    const merged: BufferedRange[] = [];
-
-    for (const r of normalized) {
-      if (merged.length === 0) {
-        merged.push(r);
-        continue;
+        await this.performFinalProbe();
+      } catch (error) {
+        this.logger.error("Error in finalize handler:", error);
       }
-
-      const last = merged[merged.length - 1];
-      if (r.start - last.end <= epsilon) {
-        last.end = Math.max(last.end, r.end);
-      } else {
-        merged.push(r);
-      }
-    }
-
-    return merged;
-  }
-
-  /**
-   * Handle full download completion
-   */
-  private handleFullDownload(): void {
-    this.estimatedDownloadedBytes =
-      this.totalSize - this.submittedBytesBaseline;
-    this.hasSubmittedFullDownload = true;
-    this.logFinalDownloadSize();
+    };
   }
 
   /**
    * Update progress estimate based on buffered ranges
    */
   private async updateProgressEstimate(ranges: BufferedRange[]): Promise<void> {
+    if (!this.videoInfo) return;
+
+    const { duration, totalSize } = this.videoInfo;
     const { start, end } = ranges[ranges.length - 1];
 
-    if (this.lastProbedEnd >= 0 && end - this.lastProbedEnd < 0.25) return;
+    // Throttle updates
+    if (
+      this.lastProbedEnd >= 0 &&
+      end - this.lastProbedEnd < this.config.progressThrottleMs / 1000
+    ) {
+      return;
+    }
 
     this.lastProbedEnd = end;
 
-    const approx = this.timeToByteRange(
-      start,
-      end,
-      this.currentVideoElement?.duration || 0,
-      this.totalSize
+    const totalBytes = this.bufferService.calculateTotalBytes(
+      ranges,
+      duration,
+      totalSize
     );
-    if (!approx) return;
-
-    // Calculate bytes mathematically instead of making HEAD request
-    const bytes = approx.end - approx.start + 1;
-    if (bytes > 0) {
-      this.estimatedDownloadedBytes = bytes;
+    if (totalBytes > 0) {
+      this.estimatedDownloadedBytes = totalBytes;
+      this.logger.debug("Progress updated:", { totalBytes });
     }
   }
 
   /**
-   * Convert time range to byte range
+   * Handle full download completion
    */
-  private timeToByteRange(
-    startTime: number,
-    endTime: number,
-    duration: number,
-    totalSize: number
-  ): { start: number; end: number } | null {
-    if (!duration || !totalSize) return null;
+  private handleFullDownload(): void {
+    if (!this.videoInfo) return;
 
-    const start = Math.max(0, Math.floor((startTime / duration) * totalSize));
-    const end = Math.min(
-      totalSize - 1,
-      Math.floor((endTime / duration) * totalSize) - 1
-    );
+    this.estimatedDownloadedBytes =
+      this.videoInfo.totalSize - this.submittedBytesBaseline;
+    this.hasSubmittedFullDownload = true;
+    this.logger.info("Full download detected");
 
-    return end <= start ? null : { start, end };
-  }
-
-  /**
-   * Create finalize probe handler
-   */
-  private createFinalizeProbeHandler(videoUrl: string) {
-    return async (): Promise<void> => {
-      if (this.hasSubmittedFullDownload) return;
-
-      try {
-        await this.performFinalProbe(videoUrl);
-      } catch (error) {
-        console.error("Error finalizing probe:", error);
-      }
-    };
+    this.handleBufferData();
   }
 
   /**
    * Perform final probe to calculate total downloaded bytes
    */
-  private async performFinalProbe(videoUrl: string): Promise<void> {
-    await this.ensureTotalSize(videoUrl);
+  private async performFinalProbe(): Promise<void> {
+    if (!this.videoInfo) return;
 
-    if (!this.currentVideoElement?.duration || !this.totalSize) return;
+    const { element, duration, totalSize } = this.videoInfo;
+    if (!duration || !totalSize) return;
 
-    const ranges = this.getBufferedRanges();
+    const ranges = this.bufferService.getBufferedRanges(element);
     if (ranges.length === 0) return;
 
-    const totalBytes = await this.calculateTotalBytes(ranges);
+    const totalBytes = this.bufferService.calculateTotalBytes(
+      ranges,
+      duration,
+      totalSize
+    );
     this.updateDownloadMetrics(totalBytes);
-  }
-
-  /**
-   * Calculate total bytes downloaded based on buffered ranges
-   */
-  private async calculateTotalBytes(ranges: BufferedRange[]): Promise<number> {
-    let totalBytes = 0;
-
-    for (const r of ranges) {
-      const approx = this.timeToByteRange(
-        r.start,
-        r.end,
-        this.currentVideoElement?.duration || 0,
-        this.totalSize
-      );
-      if (!approx) continue;
-
-      // Calculate bytes mathematically instead of making HEAD request
-      const bytes = approx.end - approx.start + 1;
-      totalBytes += bytes;
-    }
-
-    return totalBytes;
   }
 
   /**
@@ -366,134 +353,49 @@ export class VideoBufferTracker {
     const deltaBytes = Math.max(0, totalBytes - this.submittedBytesBaseline);
     this.estimatedDownloadedBytes = deltaBytes;
 
-    if (this.totalSize > 0 && totalBytes >= this.totalSize) {
+    if (this.videoInfo && totalBytes >= this.videoInfo.totalSize) {
       this.hasSubmittedFullDownload = true;
     }
 
-    this.logFinalDownloadSize();
+    this.handleBufferData();
     this.submittedBytesBaseline = totalBytes;
   }
 
   /**
-   * Create time update handler for end-of-video detection
-   */
-  private createTimeUpdateHandler(finalizeProbe: () => Promise<void>) {
-    return async (): Promise<void> => {
-      if (this.hasSubmittedFullDownload) return;
-
-      const video = this.currentVideoElement;
-      if (!video?.duration || isNaN(video.duration)) return;
-
-      const remaining = video.duration - video.currentTime;
-      if (remaining <= 0.2) {
-        await finalizeProbe();
-      }
-    };
-  }
-
-  /**
-   * Attach all event listeners to video and window
-   */
-  private attachEventListeners(
-    video: HTMLVideoElement,
-    onProgress: () => Promise<void>,
-    finalizeProbe: () => Promise<void>,
-    onTimeUpdateNearEnd: () => Promise<void>
-  ): void {
-    video.addEventListener("progress", onProgress);
-    video.addEventListener("timeupdate", onTimeUpdateNearEnd);
-
-    window.addEventListener("beforeunload", finalizeProbe);
-    window.addEventListener("pagehide", finalizeProbe);
-
-    document.addEventListener("visibilitychange", () => {
-      if (
-        document.visibilityState === "hidden" &&
-        !this.hasSubmittedFullDownload
-      ) {
-        finalizeProbe();
-      }
-    });
-  }
-
-  /**
-   * Log final download size and handle analytics
-   */
-  private logFinalDownloadSize(): void {
-    if (this.estimatedDownloadedBytes > 0) {
-      this.handleBufferData();
-    }
-  }
-
-  /**
-   * Handle buffer data - either call callback or send to analytics URL
+   * Handle buffer data submission
    */
   private async handleBufferData(): Promise<void> {
+    if (this.estimatedDownloadedBytes <= 0) return;
+
     const bufferData = this.getBufferData();
 
-    // Call the callback if provided
-    if (this.config.onBufferData) {
-      try {
-        await this.config.onBufferData(bufferData);
-      } catch (error) {
-        console.error("Error in onBufferData callback:", error);
-      }
-    }
-
-    // Send to analytics URL if provided (legacy support)
-    if (this.config.trafficEventUrl) {
-      await this.sendBufferDataToAnalytics(bufferData);
-    }
-
-    // Reset tracking state after successful handling
-    this.estimatedDownloadedBytes = 0;
-    this.lastProbedEnd = -1;
-  }
-
-  /**
-   * Get current buffer data
-   */
-  getBufferData(): BufferData {
-    return {
-      file_size: parseInt(this.estimatedDownloadedBytes.toFixed(0)),
-    };
-  }
-
-  /**
-   * Send buffer data to analytics URL (legacy method)
-   */
-  private async sendBufferDataToAnalytics(
-    bufferData: BufferData
-  ): Promise<void> {
     try {
-      const response = await fetch(this.config.trafficEventUrl!, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(bufferData),
-      });
-
-      if (!response.ok) {
-        console.error(
-          "Failed to send traffic data:",
-          response.status,
-          response.statusText
+      // Call user callback if provided
+      if (this.config.onBufferData) {
+        await this.analyticsService.callUserCallback(
+          this.config.onBufferData,
+          bufferData
         );
       }
+
+      // Send to analytics URL if provided
+      await this.analyticsService.sendBufferData(bufferData);
+
+      // Reset tracking state
+      this.estimatedDownloadedBytes = 0;
+      this.lastProbedEnd = -1;
+
+      this.logger.debug("Buffer data handled successfully");
     } catch (error) {
-      console.error("Error sending traffic data:", error);
+      this.logger.error("Error handling buffer data:", error);
     }
   }
-
-  /**
-   * Get current tracking statistics
-   */
-  getTrackingStats() {
-    return {
-      totalSize: this.totalSize,
-      estimatedDownloadedBytes: this.estimatedDownloadedBytes,
-      hasSubmittedFullDownload: this.hasSubmittedFullDownload,
-    };
-  }
 }
+
+// Export types
+export type {
+  VideoBufferTrackerConfig,
+  BufferData,
+  TrackingStats,
+  BufferedRange,
+} from "./types";
